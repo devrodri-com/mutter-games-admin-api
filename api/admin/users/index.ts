@@ -5,6 +5,12 @@ import { adminDb, adminAuth } from '../../_lib/firebaseAdmin';
 import withAdmin from '../../_lib/withAdmin';
 import { assertAdmin, assertSuperadmin } from '../../_lib/permissions';
 
+function setCors(res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+}
+
 // GET → List all admin users (admin + superadmin)
 // POST → Create a new admin user (superadmin only)
 
@@ -19,6 +25,12 @@ async function usersHandler({
   uid: string;
   role: 'admin' | 'superadmin';
 }) {
+  setCors(res);
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   if (req.method === 'GET') {
     return handleGet(req, res, role);
   }
