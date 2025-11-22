@@ -4,6 +4,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import withAdmin from '../../_lib/withAdmin';
 import { adminDb } from '../../_lib/firebaseAdmin';
 import { assertAdmin } from '../../_lib/permissions';
+import { handleCors, setCorsHeaders } from '../../_lib/cors';
 
 // GET → List all clients (admin + superadmin)
 
@@ -18,6 +19,11 @@ async function clientsHandler({
   uid: string;
   role: 'admin' | 'superadmin';
 }) {
+  if (handleCors(req, res)) {
+    return;
+  }
+  setCorsHeaders(req, res);
+
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

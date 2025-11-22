@@ -4,6 +4,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import withAdmin from '../../../_lib/withAdmin';
 import { adminDb, adminAuth } from '../../../_lib/firebaseAdmin';
 import { assertAdmin, assertSuperadmin } from '../../../_lib/permissions';
+import { handleCors, setCorsHeaders } from '../../../_lib/cors';
 
 // GET → Get a single admin user (admin + superadmin)
 // PATCH → Update admin fields (superadmin required for role changes)
@@ -20,6 +21,11 @@ async function handler({
   uid: string;
   role: 'admin' | 'superadmin';
 }) {
+  if (handleCors(req, res)) {
+    return;
+  }
+  setCorsHeaders(req, res);
+
   const userId = req.query.id as string;
 
   if (!userId) {

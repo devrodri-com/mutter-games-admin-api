@@ -2,8 +2,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
 import { adminDb, adminAuth } from '../../../_lib/firebaseAdmin';
+import { handleCors, setCorsHeaders } from '../../../_lib/cors';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (handleCors(req, res)) {
+    return;
+  }
+  setCorsHeaders(req, res);
+
   if (req.method !== 'DELETE') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

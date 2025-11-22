@@ -3,6 +3,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
 import { adminDb, adminAuth } from '../../_lib/firebaseAdmin';
+import { handleCors, setCorsHeaders } from '../../_lib/cors';
 
 
 type VariantOption = {
@@ -84,7 +85,12 @@ function validatePayload(payload: CreateProductPayload): string | null {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
+  if (handleCors(req, res)) {
+    return;
+  }
+  setCorsHeaders(req, res);
+
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -107,83 +113,94 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'Forbidden: admin role required' });
     }
 
-    const payload =
-      typeof req.body === 'string' ? (JSON.parse(req.body) as CreateProductPayload) : (req.body as CreateProductPayload);
-
-    const validationError = validatePayload(payload);
-    if (validationError) {
-      return res.status(400).json({ error: validationError });
+    if (req.method === 'GET') {
+      const snapshot = await adminDb.collection('products').get();
+      const products = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      return res.status(200).json({ products });
     }
 
-    const normalizedVariants: Variant[] = payload.variants.map((variant) => ({
-      label: {
-        es: variant.label?.es?.trim() || '',
-        en: variant.label?.en?.trim() || '',
-      },
-      options: variant.options.map((option) => ({
-        value: option.value.trim(),
-        priceUSD: Number(option.priceUSD),
-        stock: Number.isFinite(option.stock) ? Number(option.stock) : 0,
-      })),
-    }));
+    if (req.method === 'POST') {
+      const payload =
+        typeof req.body === 'string' ? (JSON.parse(req.body) as CreateProductPayload) : (req.body as CreateProductPayload);
 
-    const optionPrices = normalizedVariants
-      .flatMap((variant) => variant.options.map((option) => Number(option.priceUSD)))
-      .filter((price) => Number.isFinite(price) && price >= 0);
+      const validationError = validatePayload(payload);
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
+      }
 
-    if (!optionPrices.length) {
-      return res.status(400).json({ error: 'No se encontraron precios válidos en las variantes' });
+      const normalizedVariants: Variant[] = payload.variants.map((variant) => ({
+        label: {
+          es: variant.label?.es?.trim() || '',
+          en: variant.label?.en?.trim() || '',
+        },
+        options: variant.options.map((option) => ({
+          value: option.value.trim(),
+          priceUSD: Number(option.priceUSD),
+          stock: Number.isFinite(option.stock) ? Number(option.stock) : 0,
+        })),
+      }));
+
+      const optionPrices = normalizedVariants
+        .flatMap((variant) => variant.options.map((option) => Number(option.priceUSD)))
+        .filter((price) => Number.isFinite(price) && price >= 0);
+
+      if (!optionPrices.length) {
+        return res.status(400).json({ error: 'No se encontraron precios válidos en las variantes' });
+      }
+
+      const priceUSD = Math.min(...optionPrices);
+
+      const stockTotal = normalizedVariants
+        .flatMap((variant) => variant.options.map((option) => Number(option.stock) || 0))
+        .reduce((sum, stock) => sum + (Number.isFinite(stock) ? stock : 0), 0);
+
+      const slugSource =
+        payload.slug && payload.slug.trim().length > 0
+          ? payload.slug
+          : `${payload.title.es}-${payload.subcategory?.name || ''}`;
+      const slug = slugify(slugSource);
+
+      const docData = {
+        title: {
+          es: payload.title.es.trim(),
+          en: payload.title.en?.trim() || '',
+        },
+        description: payload.description || '',
+        slug,
+        category: {
+          id: payload.category.id,
+          name: payload.category.name || '',
+        },
+        subcategory: {
+          id: payload.subcategory.id,
+          name: payload.subcategory.name || '',
+          categoryId: payload.subcategory.categoryId || payload.category.id,
+        },
+        tipo: payload.tipo,
+        defaultDescriptionType: payload.defaultDescriptionType || 'none',
+        extraDescriptionTop: payload.extraDescriptionTop || '',
+        extraDescriptionBottom: payload.extraDescriptionBottom || '',
+        descriptionPosition: payload.descriptionPosition || 'bottom',
+        active: payload.active,
+        images: payload.images,
+        allowCustomization: Boolean(payload.allowCustomization),
+        customName: payload.customName || '',
+        customNumber: payload.customNumber || '',
+        priceUSD,
+        variants: normalizedVariants,
+        sku: payload.sku || '',
+        stockTotal,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      };
+
+      const docRef = await adminDb.collection('products').add(docData);
+
+      return res.status(201).json({ id: docRef.id, slug });
     }
-
-    const priceUSD = Math.min(...optionPrices);
-
-    const stockTotal = normalizedVariants
-      .flatMap((variant) => variant.options.map((option) => Number(option.stock) || 0))
-      .reduce((sum, stock) => sum + (Number.isFinite(stock) ? stock : 0), 0);
-
-    const slugSource =
-      payload.slug && payload.slug.trim().length > 0
-        ? payload.slug
-        : `${payload.title.es}-${payload.subcategory?.name || ''}`;
-    const slug = slugify(slugSource);
-
-    const docData = {
-      title: {
-        es: payload.title.es.trim(),
-        en: payload.title.en?.trim() || '',
-      },
-      description: payload.description || '',
-      slug,
-      category: {
-        id: payload.category.id,
-        name: payload.category.name || '',
-      },
-      subcategory: {
-        id: payload.subcategory.id,
-        name: payload.subcategory.name || '',
-        categoryId: payload.subcategory.categoryId || payload.category.id,
-      },
-      tipo: payload.tipo,
-      defaultDescriptionType: payload.defaultDescriptionType || 'none',
-      extraDescriptionTop: payload.extraDescriptionTop || '',
-      extraDescriptionBottom: payload.extraDescriptionBottom || '',
-      descriptionPosition: payload.descriptionPosition || 'bottom',
-      active: payload.active,
-      images: payload.images,
-      allowCustomization: Boolean(payload.allowCustomization),
-      customName: payload.customName || '',
-      customNumber: payload.customNumber || '',
-      priceUSD,
-      variants: normalizedVariants,
-      sku: payload.sku || '',
-      stockTotal,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    };
-
-    const docRef = await adminDb.collection('products').add(docData);
-
-    return res.status(201).json({ id: docRef.id, slug });
   } catch (error) {
     console.error('Error creando producto admin:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
