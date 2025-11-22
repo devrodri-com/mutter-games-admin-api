@@ -1,0 +1,12 @@
+{
+    "name": "mutter-games-admin-api",
+    "version": "1.0.0",
+    "private": true,
+    "scripts": {
+      "dev": "vercel dev",
+      "start": "node"
+    },
+    "dependencies": {
+      "firebase-admin": "^13.0.0"
+    }
+  }
