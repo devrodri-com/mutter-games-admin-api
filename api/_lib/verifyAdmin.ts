@@ -1,8 +1,6 @@
 // api/_lib/verifyAdmin.ts
-
-// api/_lib/verifyAdmin.ts
-
 import { adminAuth } from './firebaseAdmin';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export interface VerifiedAdmin {
   uid: string;
@@ -13,11 +11,11 @@ export interface VerifiedAdmin {
  * Extracts and verifies the Firebase ID token from the Authorization header.
  * Returns uid + role, or throws standardized errors.
  */
-export async function verifyAdmin(req: Request): Promise<VerifiedAdmin> {
-  const authHeader = req.headers.get('authorization');
+export async function verifyAdmin(req: VercelRequest): Promise<VerifiedAdmin> {
+  const authHeader = req.headers['authorization'] as string | undefined;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new Response('Missing or invalid Authorization header', { status: 401 });
+    throw Object.assign(new Error('Missing or invalid Authorization header'), { status: 401 });
   }
 
   const tokenString = authHeader.slice(7).trim();
@@ -26,14 +24,14 @@ export async function verifyAdmin(req: Request): Promise<VerifiedAdmin> {
   try {
     decoded = await adminAuth.verifyIdToken(tokenString);
   } catch (err) {
-    throw new Response('Invalid or expired token', { status: 401 });
+    throw Object.assign(new Error('Invalid or expired token'), { status: 401 });
   }
 
   const isAdmin = decoded.admin === true;
   const isSuperadmin = decoded.superadmin === true;
 
   if (!isAdmin && !isSuperadmin) {
-    throw new Response('Forbidden: admin access required', { status: 403 });
+    throw Object.assign(new Error('Forbidden: admin access required'), { status: 403 });
   }
 
   return {
