@@ -78,3 +78,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: message });
   }
 }
+// TODO: review categories endpoint
