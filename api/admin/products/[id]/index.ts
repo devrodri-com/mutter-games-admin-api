@@ -71,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   setCorsHeaders(req, res);
 
-  if (req.method !== 'GET' && req.method !== 'PATCH') {
+  if (req.method !== 'GET' && req.method !== 'PATCH' && req.method !== 'DELETE') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -139,8 +139,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({ id: productId, updated: true });
     }
+
+    if (req.method === 'DELETE') {
+      const docRef = adminDb.collection('products').doc(productId);
+      const snap = await docRef.get();
+
+      if (!snap.exists) {
+        return res.status(404).json({ error: 'Product not found' });
+      }
+
+      await docRef.delete();
+
+      return res.status(200).json({ id: productId, deleted: true });
+    }
   } catch (error) {
-    console.error('Error actualizando producto:', error);
+    console.error('Error en producto handler:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
     return res.status(500).json({ error: message });
   }
