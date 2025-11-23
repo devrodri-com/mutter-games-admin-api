@@ -1,4 +1,4 @@
-// api/admin/categories/[id]/route.ts
+// api/admin/categories/[id]/index.ts
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
