@@ -71,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   setCorsHeaders(req, res);
 
-  if (req.method !== 'PATCH') {
+  if (req.method !== 'GET' && req.method !== 'PATCH') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
@@ -101,30 +101,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'Forbidden: admin role required' });
     }
 
-    const payloadRaw =
-      typeof req.body === 'string' ? (JSON.parse(req.body) as UpdateProductPayload) : (req.body as UpdateProductPayload);
+    if (req.method === 'GET') {
+      const docRef = adminDb.collection('products').doc(productId);
+      const snap = await docRef.get();
 
-    if (!payloadRaw || typeof payloadRaw !== 'object') {
-      return res.status(400).json({ error: 'Invalid payload' });
-    }
-
-    const updateData: UpdateProductPayload = { ...payloadRaw };
-
-    if (payloadRaw.variants) {
-      const { normalized, priceUSD, stockTotal } = normalizeVariants(payloadRaw.variants);
-
-      updateData.variants = normalized;
-      if (Number.isFinite(priceUSD)) {
-        updateData.priceUSD = priceUSD;
+      if (!snap.exists) {
+        return res.status(404).json({ error: 'Product not found' });
       }
-      updateData.stockTotal = stockTotal;
+
+      const data = snap.data();
+      return res.status(200).json({ product: { id: snap.id, ...data } });
     }
 
-    updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+    if (req.method === 'PATCH') {
+      const payloadRaw =
+        typeof req.body === 'string' ? (JSON.parse(req.body) as UpdateProductPayload) : (req.body as UpdateProductPayload);
 
-    await adminDb.collection('products').doc(productId).update(updateData);
+      if (!payloadRaw || typeof payloadRaw !== 'object') {
+        return res.status(400).json({ error: 'Invalid payload' });
+      }
 
-    return res.status(200).json({ id: productId, updated: true });
+      const updateData: UpdateProductPayload = { ...payloadRaw };
+
+      if (payloadRaw.variants) {
+        const { normalized, priceUSD, stockTotal } = normalizeVariants(payloadRaw.variants);
+
+        updateData.variants = normalized;
+        if (Number.isFinite(priceUSD)) {
+          updateData.priceUSD = priceUSD;
+        }
+        updateData.stockTotal = stockTotal;
+      }
+
+      updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
+
+      await adminDb.collection('products').doc(productId).update(updateData);
+
+      return res.status(200).json({ id: productId, updated: true });
+    }
   } catch (error) {
     console.error('Error actualizando producto:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';

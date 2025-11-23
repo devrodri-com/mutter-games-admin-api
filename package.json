@@ -3,10 +3,13 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-      "dev": "vercel dev",
-      "start": "node"
+        "dev": "vercel dev",
+        "start": "node"
     },
     "dependencies": {
-      "firebase-admin": "^13.0.0"
+        "firebase-admin": "^13.0.0"
+    },
+    "devDependencies": {
+        "tsx": "^4.20.6"
     }
-  }
+}
