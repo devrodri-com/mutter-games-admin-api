@@ -2,6 +2,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { verifyAdmin } from './verifyAdmin';
+import { handleCors, setCorsHeaders } from './cors';
 
 /**
  * Wrapper to standardize all admin endpoints:
@@ -26,6 +27,11 @@ export default function withAdmin(
   }) => Promise<any>
 ) {
   return async (req: VercelRequest, res: VercelResponse) => {
+    if (handleCors(req, res)) {
+      return;
+    }
+    setCorsHeaders(req, res);
+
     try {
       const { uid, role } = await verifyAdmin(req as any);
       return handler({ req, res, uid, role });
