@@ -48,6 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     await adminDb.collection('subcategories').doc(subcategoryId).delete();
 
+    const categoryDocRef = adminDb.collection('categories').doc(categoryIdParam);
+    await categoryDocRef.collection('subcategories').doc(subcategoryId).delete();
+
     return res.status(200).json({ id: subcategoryId, deleted: true });
   } catch (error) {
     console.error('Error eliminando subcategory:', error);

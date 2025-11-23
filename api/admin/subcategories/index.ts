@@ -78,6 +78,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       const docRef = await adminDb.collection('subcategories').add(docData);
 
+      const categoryDocRef = adminDb.collection('categories').doc(docData.categoryId);
+      await categoryDocRef
+        .collection('subcategories')
+        .doc(docRef.id)
+        .set({
+          name: docData.name,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
       return res.status(201).json({ id: docRef.id, created: true });
     }
   } catch (error) {
