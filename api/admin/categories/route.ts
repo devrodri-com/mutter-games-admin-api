@@ -1,4 +1,4 @@
-// api/admin/categories/index.ts
+// api/admin/categories/route.ts
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
@@ -79,3 +79,4 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 }
 // TODO: review categories endpoint
+
