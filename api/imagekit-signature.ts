@@ -4,7 +4,16 @@ import { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://muttergames.com');
+  const allowedOrigins = [
+    "https://muttergames.com",
+    "https://www.muttergames.com"
+  ];
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', 'https://muttergames.com');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 

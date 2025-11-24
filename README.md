@@ -115,4 +115,5 @@ Este backend está diseñado para funcionar como origen seguro en todos esos flu
 
 **Rodrigo Opalo**  
 https://github.com/devrodri-com
+
 https://devrodri.com
