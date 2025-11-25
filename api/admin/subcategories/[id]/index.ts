@@ -2,8 +2,9 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import * as admin from 'firebase-admin';
-import { adminDb, adminAuth } from '../../../_lib/firebaseAdmin';
+import { adminDb } from '../../../_lib/firebaseAdmin';
 import { handleCors, setCorsHeaders } from '../../../_lib/cors';
+import { verifyAdmin } from '../../../_lib/verifyAdmin';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) {
@@ -28,23 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const authHeader = req.headers.authorization || '';
-    const tokenString = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
-    if (!tokenString) {
-      return res.status(401).json({ error: 'Unauthorized: missing bearer token' });
-    }
-
-    let decodedToken: admin.auth.DecodedIdToken;
-    try {
-      decodedToken = await adminAuth.verifyIdToken(tokenString);
-    } catch {
-      return res.status(401).json({ error: 'Unauthorized: invalid token' });
-    }
-    const claims = decodedToken as { [key: string]: any };
-    const isAdmin = claims.admin === true || claims.superadmin === true;
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Forbidden: admin role required' });
-    }
+    await verifyAdmin(req);
 
     await adminDb.collection('subcategories').doc(subcategoryId).delete();
 
@@ -52,7 +37,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await categoryDocRef.collection('subcategories').doc(subcategoryId).delete();
 
     return res.status(200).json({ id: subcategoryId, deleted: true });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message || 'Unauthorized' });
+    }
     console.error('Error eliminando subcategory:', error);
     const message = error instanceof Error ? error.message : 'Internal server error';
     return res.status(500).json({ error: message });

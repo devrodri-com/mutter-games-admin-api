@@ -1,41 +1,47 @@
 // api/_lib/verifyAdmin.ts
+
 import { adminAuth } from './firebaseAdmin';
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import type { VercelRequest } from '@vercel/node';
 
 export interface VerifiedAdmin {
   uid: string;
-  role: 'admin' | 'superadmin';
+  isAdmin: boolean;
+  isSuperadmin: boolean;
+  claims: Record<string, any>;
 }
 
-/**
- * Extracts and verifies the Firebase ID token from the Authorization header.
- * Returns uid + role, or throws standardized errors.
- */
 export async function verifyAdmin(req: VercelRequest): Promise<VerifiedAdmin> {
-  const authHeader = req.headers['authorization'] as string | undefined;
+  const authHeader = req.headers.authorization || '';
+  const tokenString = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw Object.assign(new Error('Missing or invalid Authorization header'), { status: 401 });
+  if (!tokenString) {
+    const err: any = new Error('Unauthorized: missing bearer token');
+    err.status = 401;
+    throw err;
   }
-
-  const tokenString = authHeader.slice(7).trim();
 
   let decoded;
   try {
-    decoded = await adminAuth.verifyIdToken(tokenString);
-  } catch (err) {
-    throw Object.assign(new Error('Invalid or expired token'), { status: 401 });
+    decoded = await adminAuth.verifyIdToken(tokenString, true);
+  } catch (err: any) {
+    const e: any = new Error('Unauthorized: invalid or revoked token');
+    e.status = 401;
+    throw e;
   }
 
-  const isAdmin = decoded.admin === true;
-  const isSuperadmin = decoded.superadmin === true;
+  const claims = decoded as any;
+  const isAdmin = claims.admin === true || claims.superadmin === true;
 
-  if (!isAdmin && !isSuperadmin) {
-    throw Object.assign(new Error('Forbidden: admin access required'), { status: 403 });
+  if (!isAdmin) {
+    const e: any = new Error('Forbidden: insufficient permissions');
+    e.status = 403;
+    throw e;
   }
 
   return {
     uid: decoded.uid,
-    role: isSuperadmin ? 'superadmin' : 'admin',
+    isAdmin: !!claims.admin,
+    isSuperadmin: !!claims.superadmin,
+    claims,
   };
 }

@@ -33,13 +33,14 @@ export default function withAdmin(
     setCorsHeaders(req, res);
 
     try {
-      const { uid, role } = await verifyAdmin(req as any);
+      const { uid, isSuperadmin } = await verifyAdmin(req as any);
+      const role: 'admin' | 'superadmin' = isSuperadmin ? 'superadmin' : 'admin';
       return handler({ req, res, uid, role });
     } catch (err: any) {
       if (err instanceof Response) {
         return res.status(err.status || 500).json({ error: err.statusText || 'Error' });
       }
-      return res.status(500).json({ error: 'Internal Server Error', details: err?.message });
+      return res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
     }
   };
 }
