@@ -2,23 +2,20 @@
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import crypto from 'crypto';
+import { verifyAdmin } from './_lib/verifyAdmin';
+import { handleCors } from './_lib/cors';
 
-export default function handler(req: VercelRequest, res: VercelResponse) {
-  const allowedOrigins = [
-    "https://muttergames.com",
-    "https://www.muttergames.com"
-  ];
-  const origin = req.headers.origin;
-  if (origin && allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  } else {
-    res.setHeader('Access-Control-Allow-Origin', 'https://muttergames.com');
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (handleCors(req, res)) return;
+
+  if (req.method !== 'GET') {
+    return res.status(405).json({ error: 'Method not allowed' });
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  try {
+    await verifyAdmin(req);
+  } catch (err: any) {
+    return res.status(err.status || 401).json({ error: err.message || 'Unauthorized' });
   }
 
   const publicKey = process.env.IMAGEKIT_PUBLIC_KEY;
