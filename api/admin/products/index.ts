@@ -51,6 +51,15 @@ function slugify(input: string): string {
     .substring(0, 120);
 }
 
+function normalizeSortKey(title: string): string {
+  return title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 function validatePayload(payload: CreateProductPayload): string | null {
   if (!payload?.title?.es?.trim()) {
     return 'title.es es requerido';
@@ -148,6 +157,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           : `${payload.title.es}-${payload.subcategory?.name || ''}`;
       const slug = slugify(slugSource);
 
+      const titleText = payload.title.es || payload.title.en || '';
+      const sortKey = normalizeSortKey(titleText);
+
       const docData = {
         title: {
           es: payload.title.es.trim(),
@@ -155,6 +167,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         description: payload.description || '',
         slug,
+        sortKey,
         category: {
           id: payload.category.id,
           name: payload.category.name || '',

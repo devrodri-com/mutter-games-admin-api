@@ -66,6 +66,15 @@ const normalizeVariants = (variants: Variant[]) => {
   return { normalized, priceUSD, stockTotal };
 };
 
+function normalizeSortKey(title: string): string {
+  return title
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) {
     return;
@@ -106,6 +115,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'Invalid payload' });
       }
 
+      const docRef = adminDb.collection('products').doc(productId);
+      const docSnap = await docRef.get();
+
+      if (!docSnap.exists) {
+        return res.status(404).json({ error: 'Product not found' });
+      }
+
+      const currentData = docSnap.data();
       const updateData: UpdateProductPayload = { ...payloadRaw };
 
       if (payloadRaw.variants) {
@@ -118,9 +135,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         updateData.stockTotal = stockTotal;
       }
 
+      // Si el título cambia, recalcular sortKey
+      if (payloadRaw.title) {
+        const currentTitle = currentData?.title as { es?: string; en?: string } | undefined;
+        const newTitleEs = payloadRaw.title.es !== undefined ? payloadRaw.title.es.trim() : currentTitle?.es || '';
+        const newTitleEn = payloadRaw.title.en !== undefined ? payloadRaw.title.en.trim() : currentTitle?.en || '';
+        const titleText = newTitleEs || newTitleEn || '';
+        updateData.sortKey = normalizeSortKey(titleText);
+      }
+
       updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
 
-      await adminDb.collection('products').doc(productId).update(updateData);
+      await docRef.update(updateData);
 
       return res.status(200).json({ id: productId, updated: true });
     }
