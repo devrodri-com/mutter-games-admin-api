@@ -10,6 +10,8 @@
         "firebase-admin": "^13.0.0"
     },
     "devDependencies": {
-        "tsx": "^4.20.6"
+        "@vercel/node": "^5.5.13",
+        "tsx": "^4.20.6",
+        "typescript": "^5.9.3"
     }
 }
