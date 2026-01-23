@@ -1,4 +1,4 @@
-// api/create-mp-preference.ts
+// scripts/create-mp-preference.ts
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
@@ -171,4 +171,3 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 }
-
