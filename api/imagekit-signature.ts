@@ -34,14 +34,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .update(token + String(expire))
     .digest('hex');
 
-  console.log("🔒 Firma generada:", {
-    signature,
-    token,
-    expire,
-    publicKey: !!publicKey,
-    privateKey: !!privateKey,
-    urlEndpoint: !!process.env.IMAGEKIT_URL_ENDPOINT,
-  });
   return res.status(200).json({
     signature,
     token,
