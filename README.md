@@ -90,6 +90,21 @@ Este proyecto se despliega automáticamente con cada push a `main`.
 Producción:  
 https://mutter-games-admin-api-prod.vercel.app
 
+### Guardrail de Vercel Hobby
+
+El plan Hobby permite hasta **12 Serverless Functions** por deployment. Antes de agregar endpoints bajo `api/`, ejecutar:
+
+```bash
+npm run check:vercel-functions
+```
+
+Si se agrega CI en el futuro, incluir este check antes del deploy:
+
+```bash
+npm ci
+npm run check:vercel-functions
+```
+
 ---
 
 ## 🧪 Tests integrados
