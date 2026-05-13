@@ -39,7 +39,7 @@ Run these before merging supply-chain changes:
 
 ```bash
 npm ci
-npm run build
+npm run typecheck
 npm run check:vercel-functions
 npm run audit:prod
 npm run audit:all
