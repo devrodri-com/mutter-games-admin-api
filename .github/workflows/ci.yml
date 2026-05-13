@@ -27,7 +27,13 @@ jobs:
         run: npm ci
 
       - name: Build
-        run: find api -name '*.ts' -print0 | xargs -0 npm exec tsc -- --noEmit --skipLibCheck --moduleResolution node --target ES2022 --module commonjs --esModuleInterop
+        run: npm run build
 
       - name: Check Vercel function count
         run: npm run check:vercel-functions
+
+      - name: Audit production dependencies
+        run: npm run audit:prod
+
+      - name: Audit full dependency graph
+        run: npm run audit:all
