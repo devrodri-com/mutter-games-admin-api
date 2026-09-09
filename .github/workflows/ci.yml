@@ -20,7 +20,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: devrodri-com/mutter-games-dev
-          ref: 2c35e542fd0845cebc966642a95da7e39f9a2ddc
+          ref: 806d309cda1a64b96131f67499bf4813de7667a0
           path: test-harness
           persist-credentials: false
 
@@ -55,10 +55,13 @@ jobs:
         run: >-
           node test-harness/node_modules/firebase-tools/lib/bin/firebase.js
           emulators:exec --only firestore,auth --project demo-mutter-r1
-          --config test-harness/scripts/catalog-emulators.json "npm test"
+          --config test-harness/firebase.catalog-emulators.json "npm test"
 
       - name: Check Vercel function count
         run: npm run check:vercel-functions
+
+      - name: Package every API function with the installed builder
+        run: npm run check:packaging
 
       - name: Audit production dependencies
         run: npm run audit:prod

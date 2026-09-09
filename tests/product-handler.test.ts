@@ -37,6 +37,11 @@ test('real product handler: authentication, single PATCH, legacy rejection and c
   const admin: unknown=await signIn.json();
   if(!admin||typeof admin!=='object'||!('idToken' in admin)||typeof admin.idToken!=='string')throw Error('Invalid synthetic sign-in response');
   await db.collection('products').doc('handler-product').set({active:true,title:'Legacy',description:'before',unknown:42,images:['https://example.invalid/image']});
+  // Detect an accidentally permissive emulator config: this authenticated client cannot edit catalog.
+  const denied = await fetch('http://127.0.0.1:8188/v1/projects/demo-mutter-r1/databases/(default)/documents/products/handler-product?updateMask.fieldPaths=active', {
+   method:'PATCH',headers:{'Content-Type':'application/json',Authorization:`Bearer ${user.idToken}`},body:JSON.stringify({fields:{active:{booleanValue:true}}})
+  });
+  assert.equal(denied.status,403);
   const get=await call('GET',{},admin.idToken);assert.equal(get.status,200);
   const response=get.body;
   if(!response||typeof response!=='object'||!('product' in response)||!response.product||typeof response.product!=='object'||!('version' in response.product)||typeof response.product.version!=='string')throw Error('Missing product version');

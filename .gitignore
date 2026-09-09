@@ -5,3 +5,6 @@ node_modules/
 # Local catalog regression emulator artifacts
 firebase-debug.log
 firestore-debug.log
+
+# Installed builder local package manifest (no deployment link)
+.vercel/node/

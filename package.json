@@ -9,7 +9,8 @@
         "typecheck": "find api -name '*.ts' -print0 | xargs -0 tsc --noEmit --skipLibCheck --moduleResolution node --target ES2022 --module commonjs --esModuleInterop",
         "audit:prod": "npm audit --omit=dev --audit-level=moderate",
         "audit:all": "npm audit --audit-level=high",
-        "test": "tsx --test tests/*.test.ts"
+        "test": "tsx --test tests/*.test.ts",
+        "check:packaging": "node scripts/verify-api-packaging.cjs"
     },
     "dependencies": {
         "firebase-admin": "13.9.0"
@@ -21,7 +22,7 @@
     },
     "packageManager": "npm@9.9.4",
     "overrides": {
-        "protobufjs": "7.5.8",
+        "protobufjs": "7.6.5",
         "@protobufjs/utf8": "1.1.1",
         "jsonwebtoken": {
             "jws": "3.2.3"
@@ -32,13 +33,19 @@
         "gtoken": {
             "jws": "4.0.1"
         },
-        "firebase-admin": {
-            "uuid": "11.1.1"
-        },
         "path-to-regexp": "6.3.0",
-        "undici": "6.25.0",
+        "undici": "6.28.0",
         "minimatch": "10.2.5",
         "smol-toml": "1.6.1",
-        "ajv": "8.20.0"
+        "ajv": "8.20.0",
+        "@grpc/grpc-js": "1.14.4",
+        "@tootallnate/once": "2.0.1",
+        "form-data": "2.5.6",
+        "websocket-driver": "0.7.5",
+        "brace-expansion": "5.0.9",
+        "fast-uri": "3.1.6",
+        "js-yaml": "4.3.2",
+        "tar": "7.5.21",
+        "uuid": "11.1.1"
     }
 }
