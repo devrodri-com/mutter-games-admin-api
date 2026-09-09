@@ -8,7 +8,8 @@
         "check:vercel-functions": "node scripts/check-vercel-functions-limit.js",
         "typecheck": "find api -name '*.ts' -print0 | xargs -0 tsc --noEmit --skipLibCheck --moduleResolution node --target ES2022 --module commonjs --esModuleInterop",
         "audit:prod": "npm audit --omit=dev --audit-level=moderate",
-        "audit:all": "npm audit --audit-level=high"
+        "audit:all": "npm audit --audit-level=high",
+        "test": "tsx --test tests/*.test.ts"
     },
     "dependencies": {
         "firebase-admin": "13.9.0"

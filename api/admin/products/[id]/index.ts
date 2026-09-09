@@ -1,79 +1,10 @@
 // api/admin/products/[id]/index.ts
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import * as admin from 'firebase-admin';
+import { patchProduct, productVersion, ProductPatchError } from '../../../_lib/product-patch';
 import { adminDb } from '../../../_lib/firebaseAdmin';
 import { handleCors, setCorsHeaders } from '../../../_lib/cors';
 import { verifyAdmin } from '../../../_lib/verifyAdmin';
-
-type VariantOption = {
-  value: string;
-  priceUSD: number;
-  stock?: number;
-};
-
-type Variant = {
-  label: { es: string; en: string };
-  options: VariantOption[];
-};
-
-type UpdateProductPayload = {
-  title?: { es?: string; en?: string };
-  description?: string;
-  slug?: string;
-  category?: { id?: string; name?: string };
-  subcategory?: { id?: string; name?: string; categoryId?: string };
-  tipo?: string;
-  defaultDescriptionType?: string;
-  extraDescriptionTop?: string;
-  extraDescriptionBottom?: string;
-  descriptionPosition?: 'top' | 'bottom';
-  active?: boolean;
-  images?: string[];
-  allowCustomization?: boolean;
-  customName?: string;
-  customNumber?: string;
-  priceUSD?: number;
-  variants?: Variant[];
-  sku?: string;
-  stockTotal?: number;
-  [key: string]: any;
-};
-
-const normalizeVariants = (variants: Variant[]) => {
-  const normalized: Variant[] = variants.map((variant) => ({
-    label: {
-      es: variant.label?.es?.trim() || '',
-      en: variant.label?.en?.trim() || '',
-    },
-    options: (variant.options || []).map((option) => ({
-      value: option.value?.trim() || '',
-      priceUSD: Number(option.priceUSD),
-      stock: Number.isFinite(option.stock) ? Number(option.stock) : 0,
-    })),
-  }));
-
-  const optionPrices = normalized
-    .flatMap((variant) => variant.options.map((option) => option.priceUSD))
-    .filter((price) => Number.isFinite(price) && price >= 0);
-
-  const priceUSD = optionPrices.length ? Math.min(...optionPrices) : undefined;
-
-  const stockTotal = normalized
-    .flatMap((variant) => variant.options.map((option) => option.stock || 0))
-    .reduce((sum, stock) => sum + (Number.isFinite(stock) ? stock : 0), 0);
-
-  return { normalized, priceUSD, stockTotal };
-};
-
-function normalizeSortKey(title: string): string {
-  return title
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[^a-z0-9]/g, '');
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) {
@@ -104,51 +35,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       const data = snap.data();
-      return res.status(200).json({ product: { id: snap.id, ...data } });
+      return res.status(200).json({ product: { ...data, id: snap.id, version: productVersion(snap) } });
     }
 
     if (req.method === 'PATCH') {
-      const payloadRaw =
-        typeof req.body === 'string' ? (JSON.parse(req.body) as UpdateProductPayload) : (req.body as UpdateProductPayload);
-
-      if (!payloadRaw || typeof payloadRaw !== 'object') {
-        return res.status(400).json({ error: 'Invalid payload' });
-      }
-
-      const docRef = adminDb.collection('products').doc(productId);
-      const docSnap = await docRef.get();
-
-      if (!docSnap.exists) {
-        return res.status(404).json({ error: 'Product not found' });
-      }
-
-      const currentData = docSnap.data();
-      const updateData: UpdateProductPayload = { ...payloadRaw };
-
-      if (payloadRaw.variants) {
-        const { normalized, priceUSD, stockTotal } = normalizeVariants(payloadRaw.variants);
-
-        updateData.variants = normalized;
-        if (Number.isFinite(priceUSD)) {
-          updateData.priceUSD = priceUSD;
-        }
-        updateData.stockTotal = stockTotal;
-      }
-
-      // Si el título cambia, recalcular sortKey
-      if (payloadRaw.title) {
-        const currentTitle = currentData?.title as { es?: string; en?: string } | undefined;
-        const newTitleEs = payloadRaw.title.es !== undefined ? payloadRaw.title.es.trim() : currentTitle?.es || '';
-        const newTitleEn = payloadRaw.title.en !== undefined ? payloadRaw.title.en.trim() : currentTitle?.en || '';
-        const titleText = newTitleEs || newTitleEn || '';
-        updateData.sortKey = normalizeSortKey(titleText);
-      }
-
-      updateData.updatedAt = admin.firestore.FieldValue.serverTimestamp();
-
-      await docRef.update(updateData);
-
-      return res.status(200).json({ id: productId, updated: true });
+      let payload: unknown;
+      try { payload = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
+      catch { return res.status(400).json({error:'Payload inválido.'}); }
+      return res.status(200).json(await patchProduct(adminDb, productId, payload));
     }
 
     if (req.method === 'DELETE') {
@@ -163,12 +57,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       return res.status(200).json({ id: productId, deleted: true });
     }
-  } catch (error: any) {
-    if (error.status) {
-      return res.status(error.status).json({ error: error.message || 'Unauthorized' });
+  } catch (error: unknown) {
+    if (error instanceof ProductPatchError) return res.status(error.status).json({ error: error.message });
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 401 || error.status === 403)) {
+      return res.status(error.status).json({error:'Unauthorized'});
     }
-    console.error('Error en producto handler:', error);
-    const message = error instanceof Error ? error.message : 'Internal server error';
-    return res.status(500).json({ error: message });
+    return res.status(500).json({error:'No se pudo completar la operación.'});
   }
 }

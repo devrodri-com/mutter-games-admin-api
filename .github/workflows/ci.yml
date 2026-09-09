@@ -29,6 +29,34 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Reuse the existing, lockfile-pinned emulator tooling from the paired frontend.
+      # Its branch must be published safely before this workflow can resolve the commit.
+      - name: Checkout exact catalog test harness
+        uses: actions/checkout@v4
+        with:
+          repository: devrodri-com/mutter-games-dev
+          ref: 2c35e542fd0845cebc966642a95da7e39f9a2ddc
+          path: test-harness
+          persist-credentials: false
+
+      - name: Restore declared harness dependencies
+        working-directory: test-harness
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Setup Java for emulators
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Catalog regression tests with real persistence and auth
+        env:
+          JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
+        run: >-
+          node test-harness/node_modules/firebase-tools/lib/bin/firebase.js
+          emulators:exec --only firestore,auth --project demo-mutter-r1
+          --config test-harness/scripts/catalog-emulators.json "npm test"
+
       - name: Check Vercel function count
         run: npm run check:vercel-functions
 

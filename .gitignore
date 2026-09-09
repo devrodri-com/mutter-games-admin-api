@@ -1,3 +1,7 @@
 .env*
 node_modules/
 .DS_Store
+
+# Local catalog regression emulator artifacts
+firebase-debug.log
+firestore-debug.log
