@@ -35,7 +35,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: devrodri-com/mutter-games-dev
-          ref: 806d309cda1a64b96131f67499bf4813de7667a0
+          ref: cd8bbb4cbea245376b51d1e0e5cd04f9ce890f6a
           path: test-harness
           persist-credentials: false
 
