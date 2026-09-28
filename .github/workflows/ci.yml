@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - codex/mutter-catalog-prep-r2-20260909
+      - codex/mutter-web-stock-prep-20260928
 
 permissions:
   contents: read

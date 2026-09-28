@@ -50,5 +50,13 @@ test('real product handler: authentication, single PATCH, legacy rejection and c
   assert.equal((await call('PATCH',{version,intent:'publication',changes:{active:false}},admin.idToken)).status,200);
   assert.equal((await call('PATCH',{version,intent:'edit',changes:{description:'stale'}},admin.idToken)).status,409);
   const persisted=(await db.collection('products').doc('handler-product').get()).data();assert.equal(persisted?.active,false);assert.equal(persisted?.description,'before');assert.equal(persisted?.unknown,42);
+  const webReservations = {'opaque-handler-reservation-12345':{expiresAt:1,lines:[{slot:'base',identity:'base',quantity:1}]}};
+  await db.collection('products').doc('handler-product').update({stockTotal:1,webReservations});
+  assert.equal((await call('DELETE',{},user.idToken)).status,403);
+  assert.equal((await call('DELETE',{},admin.idToken)).status,409);
+  assert.deepEqual((await db.collection('products').doc('handler-product').get()).data()?.webReservations,webReservations);
+  await db.collection('products').doc('handler-product').update({webReservations:{}});
+  assert.equal((await call('DELETE',{},admin.idToken)).status,200);
+  assert.equal((await db.collection('products').doc('handler-product').get()).exists,false);
  }finally{await db.terminate();await deleteApp(app);}
 });
