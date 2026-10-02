@@ -24,6 +24,7 @@ test('real product handler: authentication, single PATCH, legacy rejection and c
   await handler(req,res);return {status:res.statusCode,body:output};
  }
  try{
+  await db.doc('operations/webStockCutover').set({schema:1,state:'open',revision:'synthetic-admin-handler-open',updatedAt:new Date()});
   assert.equal((await call('PATCH',{})).status,401);assert.equal((await call('PATCH',{},'invalid')).status,401);
   const signup=await fetch('http://127.0.0.1:9198/identitytoolkit.googleapis.com/v1/accounts:signUp?key=synthetic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
   const user: unknown=await signup.json();

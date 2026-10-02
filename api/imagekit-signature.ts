@@ -13,7 +13,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    await verifyAdmin(req);
+    await verifyAdmin(req, true);
   } catch (err: any) {
     return res.status(err.status || 401).json({ error: err.message || 'Unauthorized' });
   }

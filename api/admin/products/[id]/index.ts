@@ -6,6 +6,7 @@ import { WebReservationError } from '../../../_lib/web-reservations';
 import { adminDb } from '../../../_lib/firebaseAdmin';
 import { handleCors, setCorsHeaders } from '../../../_lib/cors';
 import { verifyAdmin } from '../../../_lib/verifyAdmin';
+import { CutoverClosedError } from '../../../_lib/release-cutover';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) {
@@ -50,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(await deleteProduct(adminDb, productId));
     }
   } catch (error: unknown) {
+    if (error instanceof CutoverClosedError) return res.status(error.status).json({ code: error.code, error: error.message });
     if (error instanceof ProductPatchError || error instanceof WebReservationError) return res.status(error.status).json({ error: error.message });
     if (error && typeof error === 'object' && 'status' in error && (error.status === 401 || error.status === 403)) {
       return res.status(error.status).json({error:'Unauthorized'});
