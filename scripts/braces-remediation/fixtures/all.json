@@ -1,0 +1,178 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "@ts-morph/common": {
+      "name": "@ts-morph/common",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "fast-glob"
+      ],
+      "effects": [
+        "ts-morph"
+      ],
+      "range": "0.2.0 - 0.24.0 || 0.26.0 - 0.27.0",
+      "nodes": [
+        "node_modules/@ts-morph/common"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    },
+    "@vercel/node": {
+      "name": "@vercel/node",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        "@vercel/static-config",
+        "ts-morph"
+      ],
+      "effects": [],
+      "range": ">=2.1.1-canary.0",
+      "nodes": [
+        "node_modules/@vercel/node"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    },
+    "@vercel/static-config": {
+      "name": "@vercel/static-config",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "ts-morph"
+      ],
+      "effects": [
+        "@vercel/node"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/@vercel/static-config"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    },
+    "braces": {
+      "name": "braces",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 1240992,
+          "name": "braces",
+          "dependency": "braces",
+          "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+          "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm",
+          "severity": "high",
+          "cwe": [
+            "CWE-674"
+          ],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "range": "<=3.0.3"
+        }
+      ],
+      "effects": [
+        "micromatch"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/braces"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    },
+    "fast-glob": {
+      "name": "fast-glob",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "micromatch"
+      ],
+      "effects": [
+        "@ts-morph/common"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/fast-glob"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    },
+    "micromatch": {
+      "name": "micromatch",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "braces"
+      ],
+      "effects": [
+        "fast-glob"
+      ],
+      "range": ">=0.2.0",
+      "nodes": [
+        "node_modules/micromatch"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    },
+    "ts-morph": {
+      "name": "ts-morph",
+      "severity": "high",
+      "isDirect": false,
+      "via": [
+        "@ts-morph/common"
+      ],
+      "effects": [
+        "@vercel/node",
+        "@vercel/static-config"
+      ],
+      "range": "6.0.1 - 23.0.0 || 25.0.0 - 26.0.0",
+      "nodes": [
+        "node_modules/ts-morph"
+      ],
+      "fixAvailable": {
+        "name": "@vercel/node",
+        "version": "2.10.3",
+        "isSemVerMajor": true
+      }
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 7,
+      "critical": 0,
+      "total": 7
+    },
+    "dependencies": {
+      "prod": 81,
+      "dev": 131,
+      "optional": 131,
+      "peer": 0,
+      "peerOptional": 0,
+      "total": 315
+    }
+  }
+}

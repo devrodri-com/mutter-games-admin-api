@@ -11,7 +11,17 @@
         "audit:all": "npm audit --audit-level=high",
         "test": "tsx --test tests/*.test.ts",
         "check:packaging": "node scripts/verify-api-packaging.cjs",
-        "test:busboy": "node scripts/test-busboy.cjs"
+        "test:busboy": "node scripts/test-busboy.cjs",
+        "install:controlled": "node scripts/braces-remediation/install.cjs",
+        "check:braces": "node scripts/braces-remediation/control.cjs verify",
+        "predev": "node scripts/braces-remediation/control.cjs verify",
+        "precheck:vercel-functions": "node scripts/braces-remediation/control.cjs verify",
+        "pretypecheck": "node scripts/braces-remediation/control.cjs verify",
+        "pretest": "node scripts/braces-remediation/control.cjs verify",
+        "precheck:packaging": "node scripts/braces-remediation/control.cjs verify",
+        "pretest:busboy": "node scripts/braces-remediation/control.cjs verify",
+        "test:braces": "node --test scripts/braces-remediation/*.check.cjs",
+        "pretest:braces": "node scripts/braces-remediation/control.cjs verify"
     },
     "dependencies": {
         "firebase-admin": "13.10.0"

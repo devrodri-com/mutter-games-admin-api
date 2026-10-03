@@ -1,3 +1,4 @@
+require('./braces-remediation/control.cjs').inspect(require('node:path').resolve(__dirname, '..'));
 // Installed builder only: no linking, env pull, npm install or deployment.
 const { build } = require('@vercel/node');
 const { glob } = require('@vercel/build-utils');

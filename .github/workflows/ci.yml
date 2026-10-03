@@ -42,7 +42,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm run install:controlled
+
+      - name: Source repair and consumer regressions
+        run: npm run test:braces
 
       - name: Real Busboy and Firebase multipart regressions
         run: npm run test:busboy
@@ -73,7 +76,7 @@ jobs:
 
       - name: Restore declared harness dependencies
         working-directory: test-harness
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: node ../scripts/braces-remediation/install.cjs .
 
       - name: Setup Java for emulators
         uses: actions/setup-java@v4
@@ -118,6 +121,45 @@ jobs:
         with:
           node-version: '22.23.3'
           cache: npm
-      - run: npm ci
+      - run: npm run install:controlled
       - name: Native required dependency audit
-        run: npm run audit:${{ matrix.scope }}
+        run: node scripts/braces-remediation/audit.cjs "${{ matrix.scope }}" "$RUNNER_TEMP/native-audit"
+
+      - name: Preserve original native audit and exit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-audit-admin-${{ matrix.scope }}
+          path: ${{ runner.temp }}/native-audit
+          if-no-files-found: error
+
+  source-remediation:
+    name: Source remediation (does not waive native audit)
+    needs: [build, security]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+          cache: npm
+      - name: Require actual compatibility gates
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: test "$BUILD_RESULT" = success
+      - run: npm run install:controlled
+      - run: npm run test:braces
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-audit-admin-*
+          path: audit-input
+      - name: Assess exact source against both original audit graphs
+        run: |
+          set -euo pipefail
+          node scripts/braces-remediation/evaluate.cjs . audit-input/native-audit-admin-prod prod
+          node scripts/braces-remediation/evaluate.cjs . audit-input/native-audit-admin-all all
+          echo 'INDEPENDENT_REMEDIATION_AUDIT=PENDING; RELEASE_ELIGIBLE=NO' >> "$GITHUB_STEP_SUMMARY"
