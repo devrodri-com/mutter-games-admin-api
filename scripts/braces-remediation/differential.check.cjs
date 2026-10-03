@@ -53,7 +53,9 @@ test('bounded original overflow versus deliberate patched rejection; shallow dif
       }
       console.log(JSON.stringify({patched:'CONTROLLED_DEPTH_REJECTION',differentialComparisons:comparisons}));
     `;
-    const child = spawnSync(process.execPath, ['--max-old-space-size=192', '-e', code], {
+    // A fixed 512 KiB stack makes the before/after resource budget reproducible
+    // across arm64/macOS and x64/Linux (whose default optimized depths differ).
+    const child = spawnSync(process.execPath, ['--max-old-space-size=192', '--stack-size=512', '-e', code], {
       cwd: temp, env: { ...process.env, NODE_PATH: path.join(root, 'node_modules') }, timeout: 15000, encoding: 'utf8', maxBuffer: 1024 * 1024 });
     assert.equal(child.signal, null); assert.equal(child.status, 0, child.stderr); console.log(child.stdout);
     // The real build entry also rejects an otherwise authentic but unpatched package.
