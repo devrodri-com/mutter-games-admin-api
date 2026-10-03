@@ -10,7 +10,8 @@
         "audit:prod": "npm audit --omit=dev --audit-level=moderate",
         "audit:all": "npm audit --audit-level=high",
         "test": "tsx --test tests/*.test.ts",
-        "check:packaging": "node scripts/verify-api-packaging.cjs"
+        "check:packaging": "node scripts/verify-api-packaging.cjs",
+        "test:busboy": "node scripts/test-busboy.cjs"
     },
     "dependencies": {
         "firebase-admin": "13.10.0"
@@ -46,6 +47,9 @@
         "fast-uri": "3.1.8",
         "js-yaml": "4.3.2",
         "tar": "7.5.21",
-        "uuid": "11.1.1"
+        "uuid": "11.1.1",
+        "firebase-admin": {
+            "@fastify/busboy": "3.2.1"
+        }
     }
 }
