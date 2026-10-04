@@ -21,7 +21,10 @@
         "precheck:packaging": "node scripts/braces-remediation/control.cjs verify",
         "pretest:busboy": "node scripts/braces-remediation/control.cjs verify",
         "test:braces": "node --test scripts/braces-remediation/*.check.cjs",
-        "pretest:braces": "node scripts/braces-remediation/control.cjs verify"
+        "pretest:braces": "node scripts/braces-remediation/control.cjs verify",
+        "test:release-gate": "node --test scripts/release-gate/*.check.cjs",
+        "release:verify": "node scripts/release-gate/cli.cjs verify-pair",
+        "release:publication-check": "node scripts/release-gate/cli.cjs publication-check"
     },
     "dependencies": {
         "firebase-admin": "13.10.0"
