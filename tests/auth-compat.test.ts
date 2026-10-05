@@ -54,25 +54,32 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
   const { default: user } = await import('../api/admin/users/[id]/index');
   const { default: imagekit } = await import('../api/imagekit-signature');
   const ownedUsers = new Set<string>();
+  const passwords = new Map<string, string>();
+  const refreshTokens = new Map<string, string>();
   const createdDocuments = new Set<string>();
   const control = db.doc('operations/webStockCutover');
 
   async function createUser(claims: Record<string, unknown> = {}): Promise<string> {
-    const record = await auth.createUser({ uid: `synthetic-compat-${randomUUID()}` });
+    const uid = `synthetic-compat-${randomUUID()}`, password = `synthetic-${randomUUID()}`;
+    const record = await auth.createUser({ uid, email: `${uid}@example.invalid`, password });
+    passwords.set(uid, password);
     ownedUsers.add(record.uid);
     await auth.setCustomUserClaims(record.uid, claims);
     return record.uid;
   }
 
   async function signIn(uid: string): Promise<string> {
-    const custom = await auth.createCustomToken(uid);
-    const response = await fetch('http://127.0.0.1:9198/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=synthetic', {
+    const account = await auth.getUser(uid);
+    const password = passwords.get(uid);
+    assert.ok(account.email && password);
+    const response = await fetch('http://127.0.0.1:9198/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=synthetic', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: custom, returnSecureToken: true }),
+      body: JSON.stringify({ email: account.email, password, returnSecureToken: true }),
     });
     assert.equal(response.status, 200);
     const payload: unknown = await response.json();
-    assert.ok(isRecord(payload) && typeof payload.idToken === 'string');
+    assert.ok(isRecord(payload) && typeof payload.idToken === 'string' && typeof payload.refreshToken === 'string');
+    refreshTokens.set(uid, payload.refreshToken);
     return payload.idToken;
   }
 
@@ -118,6 +125,19 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
       assert.equal(superadmin.isSuperadmin, true);
     });
 
+    await t.test('ordinary password renewal preserves verified administrative access', async () => {
+      const refreshToken = refreshTokens.get(operatorId);
+      assert.ok(refreshToken);
+      const result = await fetch('http://127.0.0.1:9198/securetoken.googleapis.com/v1/token?key=synthetic', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+      });
+      assert.equal(result.status, 200);
+      const renewed: unknown = await result.json();
+      assert.ok(isRecord(renewed) && typeof renewed.id_token === 'string');
+      assert.equal((await verifyAdmin(request('GET', renewed.id_token))).uid, operatorId);
+    });
+
     await t.test('revoked token fails SDK revocation and the real authorization boundary', async () => {
       const uid = await createUser({ admin: true });
       const token = await signIn(uid);
@@ -148,12 +168,14 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
 
     await t.test('real users handlers create, change claims and delete a synthetic account', async () => {
       const email = `synthetic-${randomUUID()}@example.invalid`;
+      const password = `synthetic-${randomUUID()}`;
       const created = await call(users, request('POST', operatorToken, {
-        email, password: `synthetic-${randomUUID()}`, nombre: 'Synthetic compatibility user', rol: 'admin',
+        email, password, nombre: 'Synthetic compatibility user', rol: 'admin',
       }));
       assert.equal(created.status, 201);
       assert.ok(isRecord(created.body) && typeof created.body.id === 'string');
       const uid = created.body.id;
+      passwords.set(uid, password);
       ownedUsers.add(uid);
       createdDocuments.add(uid);
       assert.deepEqual((await auth.getUser(uid)).customClaims, { admin: true, superadmin: false });

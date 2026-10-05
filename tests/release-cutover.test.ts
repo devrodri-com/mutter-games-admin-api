@@ -16,11 +16,10 @@ test('every Admin writer is contained by central cutover; authenticated reads an
     const app = initializeApp({ projectId: 'demo-mutter-r1' });
     const db = getFirestore(app), auth = getAuth(app);
     db.settings({ projectId: 'demo-mutter-admin-cutover' });
-    const user = await auth.createUser({ uid: 'synthetic-release-admin' });
+    const user = await auth.createUser({ uid: 'synthetic-release-admin', email: 'synthetic-release-admin@example.invalid', password: 'synthetic-cutover-password' });
     await auth.setCustomUserClaims(user.uid, { admin: true, superadmin: true });
-    const custom = await auth.createCustomToken(user.uid);
-    const signed = await fetch('http://127.0.0.1:9198/identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=synthetic', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: custom, returnSecureToken: true }),
+    const signed = await fetch('http://127.0.0.1:9198/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=synthetic', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: user.email, password: 'synthetic-cutover-password', returnSecureToken: true }),
     });
     const body: unknown = await signed.json();
     if (!body || typeof body !== 'object' || !('idToken' in body) || typeof body.idToken !== 'string') throw new Error('Missing demo token');
@@ -49,6 +48,7 @@ test('every Admin writer is contained by central cutover; authenticated reads an
     }
     const hold = { 'synthetic-live-reservation': { expiresAt: 1, lines: [{ slot: 'base', identity: 'base', quantity: 1 }] } };
     try {
+        await db.doc('operations/webStockCutover').delete();
         await db.doc('products/p').set({ stockTotal: 5, webReservations: hold });
         const original = await db.doc('products/p').get();
         for (const state of ['missing', 'closed', 'reconciling', 'malformed']) {
