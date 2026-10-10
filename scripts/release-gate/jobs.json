@@ -1,0 +1,67 @@
+{
+  "build": {
+    "steps": [
+      "Checkout",
+      "Verify event checkout identity",
+      "Setup Node.js",
+      "Install dependencies",
+      "Source repair and consumer regressions",
+      "Real Busboy and Firebase multipart regressions",
+      "Typecheck",
+      "Checkout exact catalog test harness",
+      "Verify catalog harness identity",
+      "Checkout exact credential Rules source",
+      "Verify credential Rules source identity",
+      "Prepare credential Rules emulator config",
+      "Restore declared harness dependencies",
+      "Setup Java for emulators",
+      "Catalog regression tests with real persistence and auth",
+      "Check Vercel function count",
+      "Package every API function with the installed builder",
+      "Release gate positive and negative regressions",
+      "Record actual build source and pair",
+      "Preserve build binding"
+    ]
+  },
+  "Source remediation (does not waive native audit)": {
+    "steps": [
+      "source-remediation prerequisite 1",
+      "source-remediation prerequisite 2",
+      "Require actual compatibility gates",
+      "source-remediation prerequisite 4",
+      "source-remediation prerequisite 5",
+      "source-remediation prerequisite 6",
+      "Assess exact source against both original audit graphs",
+      "Evaluate current security disposition",
+      "Preserve security disposition binding"
+    ]
+  },
+  "Security (prod)": {
+    "steps": [
+      "security prerequisite 1",
+      "Verify security target",
+      "security prerequisite 3",
+      "security prerequisite 4",
+      "Native required dependency audit",
+      "Preserve original native audit and exit"
+    ],
+    "audit": {
+      "directory": "admin",
+      "scope": "prod"
+    }
+  },
+  "Security (all)": {
+    "steps": [
+      "security prerequisite 1",
+      "Verify security target",
+      "security prerequisite 3",
+      "security prerequisite 4",
+      "Native required dependency audit",
+      "Preserve original native audit and exit"
+    ],
+    "audit": {
+      "directory": "admin",
+      "scope": "all"
+    }
+  }
+}

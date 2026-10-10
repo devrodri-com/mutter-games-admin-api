@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - codex/mutter-catalog-prep-r2-20260909
+      - codex/mutter-web-stock-prep-20260928
 
 permissions:
   contents: read
@@ -15,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CATALOG_FRONTEND_SHA: f3bd9b6dc480afca3bcd7e2cf629671751a19cb3
+      CREDENTIAL_RULES_FRONTEND_SHA: 83b8d0612c32b29c77d7be6dd3ec4321377f942c
+      CREDENTIAL_RULES_SHA256: 98a65e316e8365b576a779fc84faa3924eee31b7d58f119e57f5a10187e4e099
 
     steps:
       - name: Checkout
@@ -37,11 +40,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: '22.23.3'
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm run install:controlled
+
+      - name: Source repair and consumer regressions
+        run: npm run test:braces
+
+      - name: Real Busboy and Firebase multipart regressions
+        run: npm run test:busboy
 
       - name: Typecheck
         run: npm run typecheck
@@ -67,9 +76,50 @@ jobs:
           printf 'harness_expected_sha=%s\nharness_head=%s\nharness_tree=%s\n' "$EXPECTED_SHA" "$actual_sha" "$actual_tree"
           test "$actual_sha" = "$EXPECTED_SHA"
 
+      - name: Checkout exact credential Rules source
+        uses: actions/checkout@v4
+        with:
+          repository: devrodri-com/mutter-games-dev
+          ref: ${{ env.CREDENTIAL_RULES_FRONTEND_SHA }}
+          path: credential-rules-source
+          persist-credentials: false
+
+      - name: Verify credential Rules source identity
+        working-directory: credential-rules-source
+        env:
+          EXPECTED_SHA: ${{ env.CREDENTIAL_RULES_FRONTEND_SHA }}
+          EXPECTED_TREE: 5f0649446fc908deac698492f680dd22f2a72ba3
+          EXPECTED_RULES_SHA256: ${{ env.CREDENTIAL_RULES_SHA256 }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse 'HEAD^{tree}')"
+          actual_rules_sha="$(sha256sum firebase.catalog-r1b.rules | cut -d ' ' -f 1)"
+          printf 'rules_expected_sha=%s\nrules_head=%s\nrules_tree=%s\nrules_sha256=%s\n' "$EXPECTED_SHA" "$actual_sha" "$actual_tree" "$actual_rules_sha"
+          test "$actual_sha" = "$EXPECTED_SHA"
+          test "$actual_tree" = "$EXPECTED_TREE"
+          test "$actual_rules_sha" = "$EXPECTED_RULES_SHA256"
+
+      - name: Prepare credential Rules emulator config
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { createHash } = require('node:crypto');
+          const historical = JSON.parse(fs.readFileSync('test-harness/firebase.catalog-emulators.json', 'utf8'));
+          assert(historical.firestore && typeof historical.firestore === 'object' && !Array.isArray(historical.firestore));
+          const rules = path.resolve('credential-rules-source/firebase.catalog-r1b.rules');
+          assert.equal(createHash('sha256').update(fs.readFileSync(rules)).digest('hex'), process.env.CREDENTIAL_RULES_SHA256);
+          const configuration = { ...historical, firestore: { ...historical.firestore, rules } };
+          assert.deepEqual({ ...configuration, firestore: { ...configuration.firestore, rules: historical.firestore.rules } }, historical);
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'credential-emulators.json'), JSON.stringify(configuration, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+          NODE
+
       - name: Restore declared harness dependencies
         working-directory: test-harness
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: node ../scripts/braces-remediation/install.cjs .
 
       - name: Setup Java for emulators
         uses: actions/setup-java@v4
@@ -81,9 +131,9 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
         run: >-
-          node test-harness/node_modules/firebase-tools/lib/bin/firebase.js
-          emulators:exec --only firestore,auth --project demo-mutter-r1
-          --config test-harness/firebase.catalog-emulators.json "npm test"
+          node scripts/run-private-demo-emulators.cjs
+          test-harness/node_modules/firebase-tools/lib/bin/firebase.js
+          "$RUNNER_TEMP/credential-emulators.json" "npm test"
 
       - name: Check Vercel function count
         run: npm run check:vercel-functions
@@ -91,8 +141,101 @@ jobs:
       - name: Package every API function with the installed builder
         run: npm run check:packaging
 
-      - name: Audit production dependencies
-        run: npm run audit:prod
+      - name: Release gate positive and negative regressions
+        run: npm run test:release-gate
 
-      - name: Audit full dependency graph
-        run: npm run audit:all
+      - name: Record actual build source and pair
+        run: node scripts/release-gate/ci.cjs build admin "$RUNNER_TEMP/release-build"
+
+      - name: Preserve build binding
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-admin-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-build
+          if-no-files-found: error
+
+  security:
+    name: Security (${{ matrix.scope }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [prod, all]
+    steps:
+      - name: security prerequisite 1
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify security target
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          git show -s --format='head=%H tree=%T'
+      - name: security prerequisite 3
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+          cache: npm
+      - name: security prerequisite 4
+        run: npm run install:controlled
+      - name: Native required dependency audit
+        run: node scripts/release-gate/audit.cjs admin "${{ matrix.scope }}" "$RUNNER_TEMP/native-audit"
+
+      - name: Preserve original native audit and exit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-audit-admin-${{ matrix.scope }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/native-audit
+          if-no-files-found: error
+
+  source-remediation:
+    name: Source remediation (does not waive native audit)
+    needs: [build, security]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: source-remediation prerequisite 1
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: source-remediation prerequisite 2
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.3'
+          cache: npm
+      - name: Require actual compatibility gates
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: test "$BUILD_RESULT" = success
+      - name: source-remediation prerequisite 4
+        run: npm run install:controlled
+      - name: source-remediation prerequisite 5
+        run: npm run test:braces
+      - name: source-remediation prerequisite 6
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-audit-admin-*
+          path: audit-input
+      - name: Assess exact source against both original audit graphs
+        run: |
+          set -euo pipefail
+          node scripts/braces-remediation/evaluate.cjs . audit-input/native-audit-admin-prod-${{ github.run_attempt }} prod
+          node scripts/braces-remediation/evaluate.cjs . audit-input/native-audit-admin-all-${{ github.run_attempt }} all
+          echo 'AUDITED_SOURCE_REPAIR_PRESERVED=YES; INDEPENDENT_RELEASE_GATE_AUDIT=PENDING; PRODUCTION_APPLICATION_AUTHORIZED=NO' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Evaluate current security disposition
+        env:
+          RELEASE_NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/release-gate/ci.cjs assess admin "$RUNNER_TEMP/release-assessment" audit-input
+
+      - name: Preserve security disposition binding
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assessment-admin-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-assessment
+          if-no-files-found: error
