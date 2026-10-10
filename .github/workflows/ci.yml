@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CATALOG_FRONTEND_SHA: f3bd9b6dc480afca3bcd7e2cf629671751a19cb3
+      CREDENTIAL_RULES_FRONTEND_SHA: 83b8d0612c32b29c77d7be6dd3ec4321377f942c
+      CREDENTIAL_RULES_SHA256: 98a65e316e8365b576a779fc84faa3924eee31b7d58f119e57f5a10187e4e099
 
     steps:
       - name: Checkout
@@ -74,6 +76,47 @@ jobs:
           printf 'harness_expected_sha=%s\nharness_head=%s\nharness_tree=%s\n' "$EXPECTED_SHA" "$actual_sha" "$actual_tree"
           test "$actual_sha" = "$EXPECTED_SHA"
 
+      - name: Checkout exact credential Rules source
+        uses: actions/checkout@v4
+        with:
+          repository: devrodri-com/mutter-games-dev
+          ref: ${{ env.CREDENTIAL_RULES_FRONTEND_SHA }}
+          path: credential-rules-source
+          persist-credentials: false
+
+      - name: Verify credential Rules source identity
+        working-directory: credential-rules-source
+        env:
+          EXPECTED_SHA: ${{ env.CREDENTIAL_RULES_FRONTEND_SHA }}
+          EXPECTED_TREE: 5f0649446fc908deac698492f680dd22f2a72ba3
+          EXPECTED_RULES_SHA256: ${{ env.CREDENTIAL_RULES_SHA256 }}
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          actual_tree="$(git rev-parse 'HEAD^{tree}')"
+          actual_rules_sha="$(sha256sum firebase.catalog-r1b.rules | cut -d ' ' -f 1)"
+          printf 'rules_expected_sha=%s\nrules_head=%s\nrules_tree=%s\nrules_sha256=%s\n' "$EXPECTED_SHA" "$actual_sha" "$actual_tree" "$actual_rules_sha"
+          test "$actual_sha" = "$EXPECTED_SHA"
+          test "$actual_tree" = "$EXPECTED_TREE"
+          test "$actual_rules_sha" = "$EXPECTED_RULES_SHA256"
+
+      - name: Prepare credential Rules emulator config
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const { createHash } = require('node:crypto');
+          const historical = JSON.parse(fs.readFileSync('test-harness/firebase.catalog-emulators.json', 'utf8'));
+          assert(historical.firestore && typeof historical.firestore === 'object' && !Array.isArray(historical.firestore));
+          const rules = path.resolve('credential-rules-source/firebase.catalog-r1b.rules');
+          assert.equal(createHash('sha256').update(fs.readFileSync(rules)).digest('hex'), process.env.CREDENTIAL_RULES_SHA256);
+          const configuration = { ...historical, firestore: { ...historical.firestore, rules } };
+          assert.deepEqual({ ...configuration, firestore: { ...configuration.firestore, rules: historical.firestore.rules } }, historical);
+          fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'credential-emulators.json'), JSON.stringify(configuration, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+          NODE
+
       - name: Restore declared harness dependencies
         working-directory: test-harness
         run: node ../scripts/braces-remediation/install.cjs .
@@ -90,7 +133,7 @@ jobs:
         run: >-
           node scripts/run-private-demo-emulators.cjs
           test-harness/node_modules/firebase-tools/lib/bin/firebase.js
-          test-harness/firebase.catalog-emulators.json "npm test"
+          "$RUNNER_TEMP/credential-emulators.json" "npm test"
 
       - name: Check Vercel function count
         run: npm run check:vercel-functions
