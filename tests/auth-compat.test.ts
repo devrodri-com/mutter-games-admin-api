@@ -197,6 +197,7 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
       ownedUsers.add(uid);
       createdDocuments.add(uid);
       assert.deepEqual((await auth.getUser(uid)).customClaims, { admin: true, superadmin: false });
+      assert.equal((await db.doc(`credentialAccess/${uid}`).get()).get('status'), 'PENDING');
       await rejectAtBoundary(await signIn(uid), 403);
       const beforeRoleChange = await admit(uid, { admin: true, superadmin: false });
       assert.equal((await verifyAdmin(request('GET', beforeRoleChange))).isSuperadmin, false);
@@ -204,8 +205,9 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
       assert.equal(updated.status, 200);
       assert.deepEqual((await auth.getUser(uid)).customClaims, { admin: true, superadmin: true });
       await rejectAtBoundary(await signIn(uid), 403);
-      assert.equal((await verifyAdmin(request('GET', beforeRoleChange))).isSuperadmin, false);
-      // Changing global role metadata cannot expand a pinned session. This
+      assert.equal((await db.doc(`credentialAccess/${uid}`).get()).get('status'), 'PENDING');
+      await rejectAtBoundary(beforeRoleChange, 403);
+      // Changing global role metadata restricts the old session first. This
       // explicit authority fixture models a separately authorized role change.
       assert.equal((await verifyAdmin(request('GET', await admit(uid, { admin: true, superadmin: true })))).isSuperadmin, true);
       assert.equal((await db.doc(`adminUsers/${uid}`).get()).data()?.rol, 'superadmin');

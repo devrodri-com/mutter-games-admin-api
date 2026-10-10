@@ -88,9 +88,9 @@ jobs:
         env:
           JAVA_TOOL_OPTIONS: -Duser.language=en -Duser.country=US
         run: >-
-          node test-harness/node_modules/firebase-tools/lib/bin/firebase.js
-          emulators:exec --only firestore,auth --project demo-mutter-r1
-          --config test-harness/firebase.catalog-emulators.json "npm test"
+          node scripts/run-private-demo-emulators.cjs
+          test-harness/node_modules/firebase-tools/lib/bin/firebase.js
+          test-harness/firebase.catalog-emulators.json "npm test"
 
       - name: Check Vercel function count
         run: npm run check:vercel-functions
