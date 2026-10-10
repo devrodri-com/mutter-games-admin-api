@@ -4,19 +4,22 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
 import { setTimeout } from 'node:timers/promises';
-import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { deleteApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { initializeDemoAdmin, installCredentialCutover, admitFixtureAccount, cleanupCredentialAccounts } from './helpers/credential-fixture';
+import type { CredentialRoles } from '../api/_lib/credential-access-state';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function request(method: string, token?: string, body: unknown = {}, id?: string): VercelRequest {
+  const query: VercelRequest['query'] = id ? { id } : {};
   return Object.assign(new IncomingMessage(new Socket()), {
     method, headers: { origin: 'http://127.0.0.1:5277', ...(token ? { authorization: `Bearer ${token}` } : {}) },
-    query: id ? { id } : {}, cookies: {}, body,
+    query, cookies: {}, body,
   });
 }
 
@@ -45,7 +48,7 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
   assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9198');
   assert.match(process.env.FIRESTORE_EMULATOR_HOST ?? '', /^127\.0\.0\.1:\d+$/);
   process.env.CORS_ALLOW_ORIGIN = 'http://127.0.0.1:5277';
-  const app = initializeApp({ projectId: 'demo-mutter-r1' });
+  const app = initializeDemoAdmin();
   const auth = getAuth(app);
   const db = getFirestore(app);
   db.settings({ projectId: 'demo-mutter-auth-compat' });
@@ -53,11 +56,20 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
   const { default: users } = await import('../api/admin/users/index');
   const { default: user } = await import('../api/admin/users/[id]/index');
   const { default: imagekit } = await import('../api/imagekit-signature');
+  const { default: clients } = await import('../api/admin/clients/index');
   const ownedUsers = new Set<string>();
   const passwords = new Map<string, string>();
   const refreshTokens = new Map<string, string>();
   const createdDocuments = new Set<string>();
+  const admittedUsers = new Set<string>();
   const control = db.doc('operations/webStockCutover');
+
+  async function admit(uid: string, roles: CredentialRoles): Promise<string> {
+    const issued = await admitFixtureAccount(auth, db, uid, roles);
+    admittedUsers.add(uid);
+    refreshTokens.set(uid, issued.refreshToken);
+    return issued.token;
+  }
 
   async function createUser(claims: Record<string, unknown> = {}): Promise<string> {
     const uid = `synthetic-compat-${randomUUID()}`, password = `synthetic-${randomUUID()}`;
@@ -100,8 +112,10 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
 
   try {
     await setControl('open');
+    await installCredentialCutover(db);
     const operatorId = await createUser({ admin: true, superadmin: true });
-    const operatorToken = await signIn(operatorId);
+    const operatorPasswordToken = await signIn(operatorId);
+    const operatorToken = await admit(operatorId, { admin: true, superadmin: true });
     const subjectId = await createUser();
 
     await t.test('missing/invalid tokens and untrusted role fields cannot authorize', async () => {
@@ -114,18 +128,20 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
 
     await t.test('fresh real tokens preserve admin and superadmin claims', async () => {
       await auth.setCustomUserClaims(subjectId, { admin: true, superadmin: false });
-      const admin = await verifyAdmin(request('GET', await signIn(subjectId)));
+      await rejectAtBoundary(await signIn(subjectId), 403);
+      const admin = await verifyAdmin(request('GET', await admit(subjectId, { admin: true, superadmin: false })));
       assert.equal(admin.uid, subjectId);
       assert.equal(admin.isAdmin, true);
       assert.equal(admin.isSuperadmin, false);
       await auth.setCustomUserClaims(subjectId, { superadmin: true });
-      const superadmin = await verifyAdmin(request('GET', await signIn(subjectId)));
+      await rejectAtBoundary(await signIn(subjectId), 403);
+      const superadmin = await verifyAdmin(request('GET', await admit(subjectId, { admin: false, superadmin: true })));
       assert.equal(superadmin.uid, subjectId);
       assert.equal(superadmin.isAdmin, false);
       assert.equal(superadmin.isSuperadmin, true);
     });
 
-    await t.test('ordinary password renewal preserves verified administrative access', async () => {
+    await t.test('capability renewal preserves verified access; ordinary password stays contained', async () => {
       const refreshToken = refreshTokens.get(operatorId);
       assert.ok(refreshToken);
       const result = await fetch('http://127.0.0.1:9198/securetoken.googleapis.com/v1/token?key=synthetic', {
@@ -136,11 +152,13 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
       const renewed: unknown = await result.json();
       assert.ok(isRecord(renewed) && typeof renewed.id_token === 'string');
       assert.equal((await verifyAdmin(request('GET', renewed.id_token))).uid, operatorId);
+      await rejectAtBoundary(operatorPasswordToken, 403);
+      await rejectAtBoundary(await signIn(operatorId), 403);
     });
 
     await t.test('revoked token fails SDK revocation and the real authorization boundary', async () => {
       const uid = await createUser({ admin: true });
-      const token = await signIn(uid);
+      const token = await admit(uid, { admin: true, superadmin: false });
       const decoded = await auth.verifyIdToken(token, true);
       // Revocation precision is seconds. Cross the issued auth_time instead of
       // forging a timestamp or mocking SDK verification to force a rejection.
@@ -156,7 +174,7 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
 
     await t.test('disabled and deleted accounts are rejected by the installed SDK', async () => {
       const uid = await createUser({ admin: true });
-      const token = await signIn(uid);
+      const token = await admit(uid, { admin: true, superadmin: false });
       await auth.updateUser(uid, { disabled: true });
       await expectSdkRejection(token, 'auth/user-disabled');
       await auth.updateUser(uid, { disabled: false });
@@ -179,17 +197,36 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
       ownedUsers.add(uid);
       createdDocuments.add(uid);
       assert.deepEqual((await auth.getUser(uid)).customClaims, { admin: true, superadmin: false });
-      assert.equal((await verifyAdmin(request('GET', await signIn(uid)))).isSuperadmin, false);
+      await rejectAtBoundary(await signIn(uid), 403);
+      const beforeRoleChange = await admit(uid, { admin: true, superadmin: false });
+      assert.equal((await verifyAdmin(request('GET', beforeRoleChange))).isSuperadmin, false);
       const updated = await call(user, request('PATCH', operatorToken, { rol: 'superadmin' }, uid));
       assert.equal(updated.status, 200);
       assert.deepEqual((await auth.getUser(uid)).customClaims, { admin: true, superadmin: true });
-      assert.equal((await verifyAdmin(request('GET', await signIn(uid)))).isSuperadmin, true);
+      await rejectAtBoundary(await signIn(uid), 403);
+      assert.equal((await verifyAdmin(request('GET', beforeRoleChange))).isSuperadmin, false);
+      // Changing global role metadata cannot expand a pinned session. This
+      // explicit authority fixture models a separately authorized role change.
+      assert.equal((await verifyAdmin(request('GET', await admit(uid, { admin: true, superadmin: true })))).isSuperadmin, true);
       assert.equal((await db.doc(`adminUsers/${uid}`).get()).data()?.rol, 'superadmin');
       const deleted = await call(user, request('DELETE', operatorToken, {}, uid));
       assert.equal(deleted.status, 200);
       ownedUsers.delete(uid);
       assert.equal((await db.doc(`adminUsers/${uid}`).get()).exists, false);
       await assert.rejects(auth.getUser(uid), (error: unknown) => isRecord(error) && error.code === 'auth/user-not-found');
+    });
+
+    await t.test('real Admin clients GET requires the pinned operator capability and preserves the same UID data', async () => {
+      const ref = db.doc(`clients/${subjectId}`), data = { uid: subjectId, name: 'Synthetic retained client', orderIds: ['retained-order'] };
+      await ref.set(data);
+      try {
+        assert.equal((await call(clients, request('GET', operatorPasswordToken))).status, 403);
+        const result = await call(clients, request('GET', operatorToken));
+        assert.equal(result.status, 200);
+        assert.ok(isRecord(result.body) && Array.isArray(result.body.clients));
+        assert.ok(result.body.clients.some((client: unknown) => isRecord(client) && client.id === subjectId && client.uid === subjectId));
+        assert.deepEqual((await ref.get()).data(), data);
+      } finally { await ref.delete(); }
     });
 
     await t.test('ImageKit real handler signs only local synthetic inputs after authorization', async () => {
@@ -223,6 +260,8 @@ test('real Auth SDK and Admin consumers preserve claims, account state and local
     delete process.env.IMAGEKIT_PRIVATE_KEY;
     for (const uid of ownedUsers) await auth.deleteUser(uid);
     for (const uid of createdDocuments) await db.doc(`adminUsers/${uid}`).delete();
+    await cleanupCredentialAccounts(db, admittedUsers);
+    await db.doc('operations/credentialAccessCutover').delete();
     await control.delete();
     await db.terminate();
     await deleteApp(app);

@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
-import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { deleteApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { VercelResponse } from '@vercel/node';
+import { initializeDemoAdmin, installCredentialCutover, admitFixtureAccount, cleanupCredentialAccounts } from './helpers/credential-fixture';
 
 function object(value: unknown): Record<string, unknown> {
   assert.ok(value && typeof value === 'object' && !Array.isArray(value));
@@ -14,11 +15,11 @@ function object(value: unknown): Record<string, unknown> {
 }
 function text(value: unknown): string { assert.equal(typeof value, 'string'); return String(value); }
 
-test('real Auth sessions at every Admin destination; derived-session residual is explicit', async t => {
+test('real Auth sessions at every Admin destination; derived credentials remain contained', async t => {
   assert.equal(process.env.FIREBASE_AUTH_EMULATOR_HOST, '127.0.0.1:9198');
   assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8188');
   process.env.CORS_ALLOW_ORIGIN = 'http://127.0.0.1:5277';
-  const app = initializeApp({ projectId: 'demo-mutter-r1' });
+  const app = initializeDemoAdmin();
   const auth = getAuth(app), db = getFirestore(app);
   db.settings({ projectId: 'demo-mutter-session-boundary' });
   const { verifyAdmin } = await import('../api/_lib/verifyAdmin');
@@ -55,6 +56,7 @@ test('real Auth sessions at every Admin destination; derived-session residual is
     ['imagekit-signature', ['GET']],
   ];
   try {
+    await installCredentialCutover(db);
     await auth.createUser({ uid });
     await auth.setCustomUserClaims(uid, { admin: true, superadmin: true });
     const signed = await post('signInWithCustomToken', { token: await auth.createCustomToken(uid), returnSecureToken: true });
@@ -75,25 +77,38 @@ test('real Auth sessions at every Admin destination; derived-session residual is
       }
       assert.deepEqual((await db.listCollections()).map(c => c.id), ['operations']);
     });
-    await t.test('characterization: custom can link password and regain the same UID/roles; operational closure required', async () => {
+    await t.test('linking password, changing it and refreshing cannot regain authority at the same UID', async () => {
       await post('update', { idToken: custom, email, password, returnSecureToken: true });
       const ordinary = await post('signInWithPassword', { email, password, returnSecureToken: true });
       const token = text(ordinary.idToken), decoded = await auth.verifyIdToken(token, true);
       assert.equal(decoded.uid, uid); assert.equal(decoded.firebase.sign_in_provider, 'password');
       assert.equal(decoded.admin, true);
-      assert.equal((await verifyAdmin(request(token))).uid, uid);
+      await assert.rejects(verifyAdmin(request(token)), (error: unknown) => object(error).status === 403);
+      for (const [route, methods] of routes) for (const method of methods) assert.equal(await invoke(route, method, token), 403, `derived ${method} ${route}`);
       // Password changes through a custom session are another derived credential.
       const changed = `synthetic-changed-${randomUUID()}`;
       const reissued = await post('signInWithCustomToken', { token: await auth.createCustomToken(uid), returnSecureToken: true });
       await post('update', { idToken: text(reissued.idToken), password: changed, returnSecureToken: true });
       const changedLogin = await post('signInWithPassword', { email, password: changed, returnSecureToken: true });
-      assert.equal((await verifyAdmin(request(text(changedLogin.idToken)))).uid, uid);
+      await assert.rejects(verifyAdmin(request(text(changedLogin.idToken))), (error: unknown) => object(error).status === 403);
       const refresh = await fetch('http://127.0.0.1:9198/securetoken.googleapis.com/v1/token?key=synthetic', {
         method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: text(changedLogin.refreshToken) }),
       });
       assert.equal(refresh.status, 200);
-      assert.equal((await verifyAdmin(request(text(object(await refresh.json()).id_token)))).uid, uid);
+      await assert.rejects(verifyAdmin(request(text(object(await refresh.json()).id_token))), (error: unknown) => object(error).status === 403);
+      const data = { uid, name: 'Synthetic retained holder', catalogue: ['unchanged-publication'] };
+      await db.doc(`clients/${uid}`).set(data);
+      const admitted = await admitFixtureAccount(auth, db, uid, { admin: true, superadmin: true });
+      assert.equal((await verifyAdmin(request(admitted.token))).uid, uid);
+      assert.equal((await auth.getUser(uid)).uid, uid);
+      assert.deepEqual((await db.doc(`clients/${uid}`).get()).data(), data);
+      // Persistent role claims remain unchanged; an unrelated ordinary login
+      // cannot inherit the newly issued per-session capability.
+      assert.deepEqual((await auth.getUser(uid)).customClaims, { admin: true, superadmin: true });
+      const otherLogin = await post('signInWithPassword', { email, password: changed, returnSecureToken: true });
+      await assert.rejects(verifyAdmin(request(text(otherLogin.idToken))), (error: unknown) => object(error).status === 403);
     });
-  } finally { await auth.deleteUser(uid); await db.terminate(); await deleteApp(app); }
+  } finally { await auth.deleteUser(uid); await cleanupCredentialAccounts(db, [uid]); await db.doc(`clients/${uid}`).delete();
+    await db.doc('operations/credentialAccessCutover').delete(); await db.terminate(); await deleteApp(app); }
 });

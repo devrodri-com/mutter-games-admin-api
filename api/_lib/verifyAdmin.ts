@@ -4,7 +4,7 @@ import { adminAuth, adminDb } from './firebaseAdmin';
 import type { VercelRequest } from '@vercel/node';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { assertCutoverOpen } from './release-cutover';
-import { admitsSession } from './session-authority';
+import { requireCredentialSession } from './credential-session';
 
 export interface VerifiedAdmin {
   uid: string;
@@ -33,10 +33,8 @@ export async function verifyAdmin(req: VercelRequest, forceWriter = false): Prom
   }
 
   const claims = decoded;
-  if (!admitsSession(claims, 'admin')) {
-    throw new AdminAuthorizationError(403, 'Forbidden: session provider not allowed; use the ordinary store sign-in');
-  }
-  const isAdmin = claims.admin === true || claims.superadmin === true;
+  const admission = await requireCredentialSession(adminAuth, adminDb, claims, 'admin');
+  const isAdmin = admission.admin || admission.superadmin;
 
   if (!isAdmin) {
     throw new AdminAuthorizationError(403, 'Forbidden: insufficient permissions');
@@ -48,8 +46,8 @@ export async function verifyAdmin(req: VercelRequest, forceWriter = false): Prom
 
   return {
     uid: decoded.uid,
-    isAdmin: !!claims.admin,
-    isSuperadmin: !!claims.superadmin,
+    isAdmin: admission.admin,
+    isSuperadmin: admission.superadmin,
     claims,
   };
 }

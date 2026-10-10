@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
-import { initializeApp, deleteApp } from 'firebase-admin/app';
+import { deleteApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import type { VercelResponse } from '@vercel/node';
+import { initializeDemoAdmin, installCredentialCutover, admitFixtureAccount, cleanupCredentialAccounts } from './helpers/credential-fixture';
 
 test('every Admin writer is contained by central cutover; authenticated reads and reservations survive', async () => {
     assert.equal(process.env.FIRESTORE_EMULATOR_HOST, '127.0.0.1:8188');
@@ -13,7 +14,7 @@ test('every Admin writer is contained by central cutover; authenticated reads an
     process.env.CORS_ALLOW_ORIGIN = 'http://127.0.0.1:5277';
     // Auth uses the emulator's declared demo project; Firestore has an isolated
     // demo namespace so the maintenance document cannot race other test files.
-    const app = initializeApp({ projectId: 'demo-mutter-r1' });
+    const app = initializeDemoAdmin();
     const db = getFirestore(app), auth = getAuth(app);
     db.settings({ projectId: 'demo-mutter-admin-cutover' });
     const user = await auth.createUser({ uid: 'synthetic-release-admin', email: 'synthetic-release-admin@example.invalid', password: 'synthetic-cutover-password' });
@@ -23,8 +24,10 @@ test('every Admin writer is contained by central cutover; authenticated reads an
     });
     const body: unknown = await signed.json();
     if (!body || typeof body !== 'object' || !('idToken' in body) || typeof body.idToken !== 'string') throw new Error('Missing demo token');
-    const token = body.idToken;
-    await auth.verifyIdToken(token, true);
+    const oldPasswordToken = body.idToken;
+    await auth.verifyIdToken(oldPasswordToken, true);
+    await installCredentialCutover(db);
+    const token = (await admitFixtureAccount(auth, db, user.uid, { admin: true, superadmin: true })).token;
     const routes = [
         ['admin/products/index', 'POST'], ['admin/products/[id]/index', 'PATCH'], ['admin/products/[id]/index', 'DELETE'],
         ['admin/categories/index', 'POST'], ['admin/categories/[id]/index', 'PATCH'], ['admin/categories/[id]/index', 'DELETE'],
@@ -48,6 +51,7 @@ test('every Admin writer is contained by central cutover; authenticated reads an
     }
     const hold = { 'synthetic-live-reservation': { expiresAt: 1, lines: [{ slot: 'base', identity: 'base', quantity: 1 }] } };
     try {
+        assert.equal((await call('admin/products/index', 'POST', oldPasswordToken)).status, 403);
         await db.doc('operations/webStockCutover').delete();
         await db.doc('products/p').set({ stockTotal: 5, webReservations: hold });
         const original = await db.doc('products/p').get();
@@ -65,10 +69,11 @@ test('every Admin writer is contained by central cutover; authenticated reads an
         const after = await db.doc('products/p').get();
         assert.deepEqual(after.data(), original.data()); assert.deepEqual(after.updateTime, original.updateTime);
         const paths = (await db.listCollections()).map(collection => collection.id).sort();
-        assert.deepEqual(paths, ['operations', 'products']);
+        assert.deepEqual(paths, ['credentialAccess', 'credentialSessions', 'operations', 'products']);
         await db.doc('operations/webStockCutover').set({ schema: 1, state: 'open', revision: 'synthetic-reopened-control', updatedAt: Timestamp.now() });
         assert.deepEqual((await db.doc('products/p').get()).data(), original.data());
         // Open writer passes maintenance and reaches the existing payload validator.
         assert.equal((await call('admin/products/index', 'POST')).status, 400);
-    } finally { await auth.deleteUser(user.uid); await db.terminate(); await deleteApp(app); }
+    } finally { await auth.deleteUser(user.uid); await cleanupCredentialAccounts(db, [user.uid]);
+        await db.doc('operations/credentialAccessCutover').delete(); await db.terminate(); await deleteApp(app); }
 });
