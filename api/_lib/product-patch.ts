@@ -1,4 +1,5 @@
 import { FieldValue, type Firestore, type DocumentSnapshot } from 'firebase-admin/firestore';
+import { assertWebReservationDelete, assertWebReservationEdit } from './web-reservations';
 export class ProductPatchError extends Error {
     constructor(public status: number, message: string) { super(message); }
 }
@@ -13,6 +14,8 @@ export function productVersion(snapshot: DocumentSnapshot): string {
     const time = snapshot.updateTime;
     if (!time)
         throw new ProductPatchError(404, 'Producto no encontrado.');
+    const catalogVersion: unknown = snapshot.get('webCatalogVersion');
+    if (typeof catalogVersion === 'string' && /^\d+:\d+$/.test(catalogVersion)) return catalogVersion;
     return `${time.seconds}:${time.nanoseconds}`;
 }
 function money(value: unknown) { if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
@@ -100,9 +103,11 @@ export async function patchProduct(db: Firestore, id: string, input: unknown) {
             throw new ProductPatchError(404, 'Producto no encontrado.');
         if (productVersion(snap) !== version)
             throw new ProductPatchError(409, 'El producto cambió mientras lo editabas. Cerrá y volvé a abrir para revisar los cambios. No se guardó tu edición.');
-        const update: Record<string, unknown> = { ...changes, updatedAt: FieldValue.serverTimestamp() };
+        const current = object(snap.data());
+        const update: Record<string, unknown> = {
+            ...changes, updatedAt: FieldValue.serverTimestamp(), webCatalogVersion: FieldValue.delete(),
+        };
         if (changes.title !== undefined) {
-            const current = object(snap.data());
             const title = typeof changes.title === 'string' ? changes.title : { ...(typeof current.title === 'object' && current.title ? object(current.title) : {}), ...object(changes.title) };
             update.title = title;
             const text = typeof title === 'string' ? title : String(title.es || title.en || '');
@@ -110,7 +115,6 @@ export async function patchProduct(db: Firestore, id: string, input: unknown) {
         }
         for (const key of ['category', 'subcategory'])
             if (changes[key] !== undefined) {
-                const current = object(snap.data());
                 update[key] = { ...(current[key] && typeof current[key] === 'object' ? object(current[key]) : {}), ...object(changes[key]) };
             }
         if (Array.isArray(changes.variants) && changes.variants.length) {
@@ -120,7 +124,19 @@ export async function patchProduct(db: Firestore, id: string, input: unknown) {
             if (options.every(o => o.stock !== undefined))
                 update.stockTotal = options.reduce((sum, o) => sum + stock(o.stock), 0);
         }
+        assertWebReservationEdit(current, { ...current, ...update });
         tx.update(ref, update);
     });
     return { id, updated: true };
+}
+
+export async function deleteProduct(db: Firestore, id: string) {
+    const ref = db.collection('products').doc(id);
+    await db.runTransaction(async tx => {
+        const snapshot = await tx.get(ref);
+        if (!snapshot.exists) throw new ProductPatchError(404, 'Producto no encontrado.');
+        assertWebReservationDelete(object(snapshot.data()));
+        tx.delete(ref);
+    });
+    return { id, deleted: true };
 }

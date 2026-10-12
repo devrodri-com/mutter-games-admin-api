@@ -4,14 +4,43 @@ import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { Gaxios } from 'gaxios';
 import { Storage } from '@google-cloud/storage';
 import { teenyRequest } from 'teeny-request';
 import { makeUUID } from 'google-gax/build/src/util';
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
 test('patched UUID stays compatible with real Google SDK consumers over loopback HTTP', async () => {
   const uuidPattern = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
   const require = createRequire(import.meta.url);
-  for (const consumer of ['firebase-admin', '@google-cloud/storage', 'gaxios', 'google-gax', 'teeny-request']) {
+  function declaredDependencies(consumer: string): Record<string, unknown> {
+    // Resolve from the real entry point: some SDKs intentionally hide their
+    // package.json via exports. A hoisted require(uuid) alone proves no usage.
+    let directory = dirname(require.resolve(consumer));
+    for (;;) {
+      const path = join(directory, 'package.json');
+      if (existsSync(path)) {
+        const metadata: unknown = JSON.parse(readFileSync(path, 'utf8'));
+        if (isRecord(metadata) && metadata.name === consumer) {
+          assert.ok(isRecord(metadata.dependencies));
+          return metadata.dependencies;
+        }
+      }
+      const parent = dirname(directory);
+      assert.notEqual(parent, directory, `Missing installed metadata for ${consumer}`);
+      directory = parent;
+    }
+  }
+  const firebaseDependencies = declaredDependencies('firebase-admin');
+  assert.equal(Object.hasOwn(firebaseDependencies, 'uuid'), false);
+  assert.equal(Object.hasOwn(firebaseDependencies, 'node-forge'), false);
+  for (const consumer of ['@google-cloud/storage', 'gaxios', 'google-gax', 'teeny-request']) {
+    assert.equal(typeof declaredDependencies(consumer).uuid, 'string', `${consumer} must actually declare UUID`);
     const localRequire = createRequire(require.resolve(consumer));
     const metadata: unknown = localRequire('uuid/package.json');
     assert.ok(metadata && typeof metadata === 'object' && 'version' in metadata);

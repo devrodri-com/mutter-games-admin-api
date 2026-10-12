@@ -1,0 +1,15 @@
+{
+  "scope": "all",
+  "command": [
+    "npm",
+    "audit",
+    "--audit-level=high",
+    "--json"
+  ],
+  "exitCode": 1,
+  "signal": null,
+  "rawSha256": "46fd42087bebf0cbfc3bf51ff988ad2b269830fc613aea86fc9a06d0bfee6a87",
+  "lockSha256": "f126d47a1e4fa8bac158c1ce3c33efbfaaa20bf706b029afa5f28fbcffd24a46",
+  "nativeResultUnmodified": true,
+  "releaseEligible": false
+}
