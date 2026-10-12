@@ -7,6 +7,7 @@
       "Install dependencies",
       "Source repair and consumer regressions",
       "Real Busboy and Firebase multipart regressions",
+      "Six repaired dependency consumer regressions",
       "Typecheck",
       "Checkout exact catalog test harness",
       "Verify catalog harness identity",
@@ -18,6 +19,9 @@
       "Catalog regression tests with real persistence and auth",
       "Check Vercel function count",
       "Package every API function with the installed builder",
+      "Verify regenerated Admin packaging bytes",
+      "Archive regenerated Admin packaging without deployment",
+      "Preserve complete regenerated Admin packaging",
       "Release gate positive and negative regressions",
       "Record actual build source and pair",
       "Preserve build binding"

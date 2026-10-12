@@ -52,6 +52,9 @@ jobs:
       - name: Real Busboy and Firebase multipart regressions
         run: npm run test:busboy
 
+      - name: Six repaired dependency consumer regressions
+        run: npm run test:dependency-six
+
       - name: Typecheck
         run: npm run typecheck
 
@@ -139,7 +142,20 @@ jobs:
         run: npm run check:vercel-functions
 
       - name: Package every API function with the installed builder
-        run: npm run check:packaging
+        run: npm run check:packaging -- --evidence "$RUNNER_TEMP/admin-api-packaging"
+
+      - name: Verify regenerated Admin packaging bytes
+        run: node scripts/api-packaging-evidence.cjs "$RUNNER_TEMP/admin-api-packaging" "$PWD"
+
+      - name: Archive regenerated Admin packaging without deployment
+        run: tar -czf "$RUNNER_TEMP/admin-api-packaging.tar.gz" -C "$RUNNER_TEMP/admin-api-packaging" .
+
+      - name: Preserve complete regenerated Admin packaging
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-api-packaging-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/admin-api-packaging.tar.gz
+          if-no-files-found: error
 
       - name: Release gate positive and negative regressions
         run: npm run test:release-gate
